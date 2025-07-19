@@ -16,12 +16,13 @@ services:
       - namenode_data:/tmp/hadoop-root/dfs/name
     env_file:
       - ./hadoop.env
+    command: ["hdfs", "namenode"]
     healthcheck:
       test: ["CMD", "hdfs", "dfsadmin", "-report"]
-      interval: 5s
-      timeout: 3s
+      interval: 30s
+      timeout: 10s
       retries: 5
-      start_period: 10s # Added start_period
+      start_period: 60s
     networks:
       - hadoop-net
 
@@ -41,12 +42,13 @@ services:
       - datanode_data:/tmp/hadoop-root/dfs/data
     env_file:
       - ./hadoop.env
+    command: ["hdfs", "datanode"]
     healthcheck:
-      test: ["CMD", "hdfs", "dfsadmin", "-D", "datanode.web.address=datanode:9864", "-report"]
-      interval: 5s
-      timeout: 3s
+      test: ["CMD", "curl", "-f", "http://localhost:9864"]
+      interval: 30s
+      timeout: 10s
       retries: 5
-      start_period: 10s # Added start_period
+      start_period: 60s
     networks:
       - hadoop-net
 
@@ -63,17 +65,18 @@ services:
       - CLUSTER_NAME=test-cluster
       - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
       - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
-      - YARN_CONF_yarn_nodemanager_aux-services=mapreduce_shuffle
-      - YARN_CONF_yarn_log-aggregation-enable=true
+      - YARN_CONF_yarn_nodemanager_aux_services=mapreduce_shuffle
+      - YARN_CONF_yarn_log_aggregation_enable=true
       - MAPRED_CONF_mapreduce_framework_name=yarn
     env_file:
       - ./hadoop.env
+    command: ["yarn", "resourcemanager"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://resourcemanager:8088/ws/v1/cluster/info"]
-      interval: 5s
-      timeout: 3s
+      interval: 30s
+      timeout: 10s
       retries: 5
-      start_period: 10s # Added start_period
+      start_period: 60s
     networks:
       - hadoop-net
 
@@ -90,17 +93,18 @@ services:
       - CLUSTER_NAME=test-cluster
       - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
       - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
-      - YARN_CONF_yarn_nodemanager_aux-services=mapreduce_shuffle
-      - YARN_CONF_yarn_log-aggregation-enable=true
+      - YARN_CONF_yarn_nodemanager_aux_services=mapreduce_shuffle
+      - YARN_CONF_yarn_log_aggregation_enable=true
       - MAPRED_CONF_mapreduce_framework_name=yarn
     env_file:
       - ./hadoop.env
-    healthcheck: # Added healthcheck for nodemanager
-      test: ["CMD", "jps | grep NodeManager || exit 1"]
-      interval: 10s
-      timeout: 5s
+    command: ["yarn", "nodemanager"]
+    healthcheck:
+      test: ["CMD", "yarn", "node", "-list"]
+      interval: 30s
+      timeout: 10s
       retries: 5
-      start_period: 15s
+      start_period: 60s
     networks:
       - hadoop-net
 
@@ -124,12 +128,13 @@ services:
       - hadoop_history:/tmp/hadoop-yarn/staging/history
     env_file:
       - ./hadoop.env
+    command: ["mapred", "historyserver"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://historyserver:8188"] # Checking web UI
-      interval: 10s
-      timeout: 5s
+      test: ["CMD", "curl", "-f", "http://historyserver:8188"]
+      interval: 30s
+      timeout: 10s
       retries: 5
-      start_period: 15s # Added start_period
+      start_period: 60s
     networks:
       - hadoop-net
 
@@ -137,10 +142,6 @@ volumes:
   namenode_data:
   datanode_data:
   hadoop_history:
-  zookeeper_data:
-  kafka_data:
-  hive_db_data:
-  hive_warehouse_data:
 
 networks:
   hadoop-net:
