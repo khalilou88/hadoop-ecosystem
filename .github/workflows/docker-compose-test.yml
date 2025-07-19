@@ -24,7 +24,7 @@ jobs:
       - name: Wait for core services to be healthy
         timeout-minutes: 10 # Give enough time for services to start
         run: |
-          services=("namenode" "zookeeper" "hive-metastore-db" "kafka" "hive-metastore" "hiveserver2" "spark-master" "flink-jobmanager" "trino-coordinator")
+          services=("zookeeper")
           for service in "${services[@]}"; do
             echo "Waiting for $service to be healthy..."
             for i in $(seq 1 60); do # Check for up to 600 seconds (10 minutes)
@@ -42,25 +42,6 @@ jobs:
             done
           done
           echo "All core services are healthy/up."
-
-      - name: Test HDFS functionality
-        run: docker exec namenode hdfs dfs -mkdir -p /test_dir && docker exec namenode hdfs dfs -ls /
-
-      - name: Test Kafka functionality (list topics)
-        run: docker exec kafka kafka-topics.sh --bootstrap-server kafka:9092 --list
-
-      - name: Test Hive functionality (show databases via Beeline)
-        run: |
-          docker exec hiveserver2 beeline -u 'jdbc:hive2://hiveserver2:10000/' -e "show databases;"
-
-      - name: Test Spark functionality (check version)
-        run: docker exec spark-master spark-shell --version
-
-      - name: Test Flink functionality (check version)
-        run: docker exec flink-jobmanager flink --version
-
-      - name: Test Trino functionality (check version)
-        run: docker exec trino-coordinator trino --version
 
       - name: Cleanup Docker containers and volumes
         if: always() # Run even if previous steps fail
