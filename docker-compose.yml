@@ -12,13 +12,22 @@ services:
       - HDFS_CONF_dfs_namenode_http_address=0.0.0.0:9870
       - HDFS_CONF_dfs_replication=1
       - ENSURE_NAMENODE_DIR=/tmp/hadoop-root/dfs/name
+      - HDFS_CONF_dfs_namenode_name_dir=/tmp/hadoop-root/dfs/name
+      - HDFS_CONF_dfs_permissions_enabled=false
     volumes:
       - namenode_data:/tmp/hadoop-root/dfs/name
     env_file:
       - ./hadoop.env
-    command: ["hdfs", "namenode"]
+    entrypoint: >
+      bash -c "
+        if [ ! -f /tmp/hadoop-root/dfs/name/current/VERSION ]; then
+          echo 'Formatting namenode...'
+          hdfs namenode -format -force -nonInteractive
+        fi
+        exec hdfs namenode
+      "
     healthcheck:
-      test: ["CMD", "hdfs", "dfsadmin", "-report"]
+      test: ["CMD", "curl", "-f", "http://localhost:9870"]
       interval: 30s
       timeout: 10s
       retries: 5
