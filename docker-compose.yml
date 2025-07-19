@@ -12,16 +12,26 @@ services:
       - HDFS_CONF_dfs_namenode_http_address=0.0.0.0:9870
       - HDFS_CONF_dfs_replication=1
       - ENSURE_NAMENODE_DIR=/tmp/hadoop-root/dfs/name
+      - HDFS_CONF_dfs_namenode_name_dir=/tmp/hadoop-root/dfs/name
+      - HDFS_CONF_dfs_permissions_enabled=false
     volumes:
       - namenode_data:/tmp/hadoop-root/dfs/name
     env_file:
       - ./hadoop.env
+    entrypoint: >
+      bash -c "
+        if [ ! -f /tmp/hadoop-root/dfs/name/current/VERSION ]; then
+          echo 'Formatting namenode...'
+          hdfs namenode -format -force -nonInteractive
+        fi
+        exec hdfs namenode
+      "
     healthcheck:
-      test: ["CMD", "hdfs", "dfsadmin", "-report"]
-      interval: 5s
-      timeout: 3s
+      test: ["CMD", "curl", "-f", "http://localhost:9870"]
+      interval: 30s
+      timeout: 10s
       retries: 5
-      start_period: 10s # Added start_period
+      start_period: 60s
     networks:
       - hadoop-net
 
@@ -41,12 +51,13 @@ services:
       - datanode_data:/tmp/hadoop-root/dfs/data
     env_file:
       - ./hadoop.env
+    command: ["hdfs", "datanode"]
     healthcheck:
-      test: ["CMD", "hdfs", "dfsadmin", "-D", "datanode.web.address=datanode:9864", "-report"]
-      interval: 5s
-      timeout: 3s
+      test: ["CMD", "curl", "-f", "http://localhost:9864"]
+      interval: 30s
+      timeout: 10s
       retries: 5
-      start_period: 10s # Added start_period
+      start_period: 60s
     networks:
       - hadoop-net
 
@@ -63,17 +74,18 @@ services:
       - CLUSTER_NAME=test-cluster
       - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
       - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
-      - YARN_CONF_yarn_nodemanager_aux-services=mapreduce_shuffle
-      - YARN_CONF_yarn_log-aggregation-enable=true
+      - YARN_CONF_yarn_nodemanager_aux_services=mapreduce_shuffle
+      - YARN_CONF_yarn_log_aggregation_enable=true
       - MAPRED_CONF_mapreduce_framework_name=yarn
     env_file:
       - ./hadoop.env
+    command: ["yarn", "resourcemanager"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://resourcemanager:8088/ws/v1/cluster/info"]
-      interval: 5s
-      timeout: 3s
+      interval: 30s
+      timeout: 10s
       retries: 5
-      start_period: 10s # Added start_period
+      start_period: 60s
     networks:
       - hadoop-net
 
@@ -90,17 +102,18 @@ services:
       - CLUSTER_NAME=test-cluster
       - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
       - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
-      - YARN_CONF_yarn_nodemanager_aux-services=mapreduce_shuffle
-      - YARN_CONF_yarn_log-aggregation-enable=true
+      - YARN_CONF_yarn_nodemanager_aux_services=mapreduce_shuffle
+      - YARN_CONF_yarn_log_aggregation_enable=true
       - MAPRED_CONF_mapreduce_framework_name=yarn
     env_file:
       - ./hadoop.env
-    healthcheck: # Added healthcheck for nodemanager
-      test: ["CMD", "jps | grep NodeManager || exit 1"]
-      interval: 10s
-      timeout: 5s
+    command: ["yarn", "nodemanager"]
+    healthcheck:
+      test: ["CMD", "yarn", "node", "-list"]
+      interval: 30s
+      timeout: 10s
       retries: 5
-      start_period: 15s
+      start_period: 60s
     networks:
       - hadoop-net
 
@@ -124,272 +137,20 @@ services:
       - hadoop_history:/tmp/hadoop-yarn/staging/history
     env_file:
       - ./hadoop.env
+    command: ["mapred", "historyserver"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://historyserver:8188"] # Checking web UI
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s # Added start_period
-    networks:
-      - hadoop-net
-
-  # Zookeeper for Kafka and other distributed coordination
-  zookeeper:
-    image: bitnami/zookeeper:3.9.3
-    hostname: zookeeper
-    container_name: zookeeper
-    ports:
-      - "2181:2181" # Client port
-    environment:
-      - ALLOW_ANONYMOUS_LOGIN=yes # For development, disable auth for simplicity
-      - ZOO_TICK_TIME=2000
-      - ZOO_INIT_LIMIT=10
-      - ZOO_SYNC_LIMIT=5
-    volumes:
-      - zookeeper_data:/bitnami/zookeeper
-    networks:
-      - hadoop-net
-    healthcheck: 
-      test: ["CMD", "sh", "-c", "nc -z localhost 2181 || exit 1"] # Check if client port is open
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s # Give Zookeeper time to initialize
-
-  # Kafka for message queuing
-  kafka:
-    image: apache/kafka:3.8.1 # Recent stable version, compatible with Zookeeper 3.9.x if needed, but 3.8.x is safe.
-    hostname: kafka
-    container_name: kafka
-    ports:
-      - "9092:9092" # Kafka broker listener
-    depends_on:
-      zookeeper:
-        condition: service_healthy
-    environment:
-      - KAFKA_BROKER_ID=1
-      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
-      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
-      - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092
-      - KAFKA_LOG_DIRS=/tmp/kafka-logs
-      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 # For dev, reduce replication
-      - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
-      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
-    volumes:
-      - kafka_data:/tmp/kafka-logs
-    networks:
-      - hadoop-net
-    healthcheck: # Added healthcheck for kafka
-      test: ["CMD", "sh", "-c", "nc -z localhost 9092 || exit 1"] # Check Kafka listener port
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s # Kafka can take a bit longer to start
-
-  # PostgreSQL for Hive Metastore
-  hive-metastore-db:
-    image: postgres:16 # Recent stable PostgreSQL
-    hostname: hive-metastore-db
-    container_name: hive-metastore-db
-    environment:
-      - POSTGRES_DB=metastore_db
-      - POSTGRES_USER=hive
-      - POSTGRES_PASSWORD=hive
-    volumes:
-      - hive_db_data:/var/lib/postgresql/data
-    networks:
-      - hadoop-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U hive -d metastore_db"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-      start_period: 10s # Added start_period
-
-  # Hive Metastore Service
-  hive-metastore:
-    image: apache/hive:4.0.0 # Recent stable Hive
-    hostname: hive-metastore
-    container_name: hive-metastore
-    depends_on:
-      hive-metastore-db:
-        condition: service_healthy
-      namenode:
-        condition: service_healthy
-    environment:
-      - SERVICE_NAME=metastore
-      - DB_DRIVER=postgres
-      - SERVICE_OPTS="-Djavax.jdo.option.ConnectionDriverName=org.postgresql.Driver -Djavax.jdo.option.ConnectionURL=jdbc:postgresql://hive-metastore-db:5432/metastore_db -Djavax.jdo.option.ConnectionUserName=hive -Djavax.jdo.option.ConnectionPassword=hive"
-      - HIVE_CONF_hive_metastore_warehouse_dir=hdfs://namenode:9000/user/hive/warehouse
-      - HIVE_CONF_hive_metastore_uris=thrift://hive-metastore:9083
-    ports:
-      - "9083:9083" # Metastore Thrift port
-    networks:
-      - hadoop-net
-    healthcheck: # Updated healthcheck for hive-metastore
-      test: ["CMD", "jps | grep HiveMetaStore || exit 1"] # Check for HiveMetaStore process
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s # Hive Metastore can take time to initialize DB
-
-  # HiveServer2 for SQL access
-  hiveserver2:
-    image: apache/hive:4.0.0
-    hostname: hiveserver2
-    container_name: hiveserver2
-    depends_on:
-      hive-metastore:
-        condition: service_healthy
-    environment:
-      - SERVICE_NAME=hiveserver2
-      - SERVICE_OPTS="-Dhive.metastore.uris=thrift://hive-metastore:9083"
-      - HIVE_CONF_hive_server2_thrift_port=10000
-      - HIVE_CONF_hive_server2_webui_port=10002
-    ports:
-      - "10000:10000" # HiveServer2 Thrift port
-      - "10002:10002" # HiveServer2 Web UI
-    networks:
-      - hadoop-net
-    volumes:
-      - hive_warehouse_data:/opt/hive/warehouse # Persistent warehouse directory
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://hiveserver2:10002 || exit 1"]
-      interval: 5s
+      test: ["CMD", "curl", "-f", "http://historyserver:8188"]
+      interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 15s # Added start_period
-
-  # Spark Master
-  spark-master:
-    image: apache/spark:3.5.1
-    hostname: spark-master
-    container_name: spark-master
-    environment:
-      - SPARK_MASTER_HOST=spark-master
-      - SPARK_MASTER_PORT=7077
-      - SPARK_MASTER_WEBUI_PORT=8080
-      - HDFS_CONF_dfs_namenode_rpc_address=namenode:9000
-      - SPARK_DAEMON_JAVA_OPTS=-Xmx512m
-    ports:
-      - "8080:8080" # Spark Master Web UI
-      - "7077:7077" # Spark Master port
-    depends_on:
-      namenode:
-        condition: service_healthy
+      start_period: 60s
     networks:
       - hadoop-net
-    healthcheck: # Added healthcheck for spark-master
-      test: ["CMD", "curl", "-f", "http://spark-master:8080"] # Check Spark Master Web UI
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
-
-  # Spark Worker
-  spark-worker:
-    image: apache/spark:3.5.1
-    hostname: spark-worker
-    container_name: spark-worker
-    environment:
-      - SPARK_MASTER_URL=spark://spark-master:7077
-      - SPARK_WORKER_WEBUI_PORT=8081
-      - SPARK_WORKER_CORES=1
-      - SPARK_WORKER_MEMORY=1g
-      - HDFS_CONF_dfs_namenode_rpc_address=namenode:9000
-      - SPARK_DAEMON_JAVA_OPTS=-Xmx512m
-    ports:
-      - "8081:8081" # Spark Worker Web UI
-    depends_on:
-      spark-master:
-        condition: service_healthy
-      namenode:
-        condition: service_healthy
-    networks:
-      - hadoop-net
-    healthcheck: # Added healthcheck for spark-worker
-      test: ["CMD", "jps | grep Worker || exit 1"] # Check for Spark Worker process
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-
-  # Flink JobManager
-  flink-jobmanager:
-    image: apache/flink:1.20-java11
-    hostname: flink-jobmanager
-    container_name: flink-jobmanager
-    ports:
-      - "8081:8081" # Flink Web UI
-      - "6123:6123" # JobManager RPC port
-    environment:
-      - JOB_MANAGER_RPC_ADDRESS=flink-jobmanager
-      - HADOOP_CLASSPATH=/opt/flink/lib/flink-shaded-hadoop-3-uber-3.3.6.jar # Ensure Flink can talk to Hadoop
-#      - FLINK_PROPERTIES="jobmanager.memory.process.size: 1024m; taskmanager.memory.process.size: 1024m;"
-    networks:
-      - hadoop-net
-    depends_on:
-      namenode:
-        condition: service_healthy
-    healthcheck: # Added healthcheck for flink-jobmanager
-      test: ["CMD", "curl", "-f", "http://flink-jobmanager:8081/overview"] # Check Flink Web UI
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
-
-  # Flink TaskManager
-  flink-taskmanager:
-    image: apache/flink:1.20-java11
-    hostname: flink-taskmanager
-    container_name: flink-taskmanager
-    depends_on:
-      flink-jobmanager:
-        condition: service_healthy
-    environment:
-      - JOB_MANAGER_RPC_ADDRESS=flink-jobmanager
-      - HADOOP_CLASSPATH=/opt/flink/lib/flink-shaded-hadoop-3-uber-3.3.6.jar
-#      - FLINK_PROPERTIES="taskmanager.numberOfTaskSlots: 1" # Limit slots for dev/testing
-    networks:
-      - hadoop-net
-    healthcheck: # Added healthcheck for flink-taskmanager
-      test: ["CMD", "jps | grep TaskManagerRunner || exit 1"] # Check for TaskManagerRunner process
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-
-  # Trino Coordinator
-  trino-coordinator:
-    image: trinodb/trino:453
-    hostname: trino-coordinator
-    container_name: trino-coordinator
-    ports:
-      - "8080:8080" # Trino Web UI and API
-    volumes:
-      - ./trino/etc:/etc/trino
-    networks:
-      - hadoop-net
-    depends_on:
-      namenode:
-        condition: service_healthy
-      hive-metastore:
-        condition: service_healthy
-    healthcheck: # Added healthcheck for trino-coordinator
-      test: ["CMD", "curl", "-f", "http://trino-coordinator:8080/v1/status"] # Check Trino status API
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
 
 volumes:
   namenode_data:
   datanode_data:
   hadoop_history:
-  zookeeper_data:
-  kafka_data:
-  hive_db_data:
-  hive_warehouse_data:
 
 networks:
   hadoop-net:
