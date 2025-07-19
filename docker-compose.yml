@@ -17,7 +17,12 @@ services:
       - zookeeper_data:/bitnami/zookeeper
     networks:
       - hadoop-net
-
+    healthcheck: 
+      test: ["CMD", "sh", "-c", "nc -z localhost 2181 || exit 1"] # Check if client port is open
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s # Give Zookeeper time to initialize
   
 
 volumes:
