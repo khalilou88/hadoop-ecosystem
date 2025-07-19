@@ -1,5 +1,9 @@
 services:
   namenode:
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     image: apache/hadoop:3.3.6
     hostname: namenode
     container_name: namenode
