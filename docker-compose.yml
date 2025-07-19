@@ -16,12 +16,12 @@ services:
       ENSURE_NAMENODE_DIR: "/tmp/hadoop-root/dfs/name"
     volumes:
       - namenode_data:/tmp/hadoop-root/dfs/name
-    healthcheck:
-      test: ["CMD", "hdfs", "dfsadmin", "-report"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-      start_period: 10s # Added start_period
+    # healthcheck:
+    #   test: ["CMD", "hdfs", "dfsadmin", "-report"]
+    #   interval: 5s
+    #   timeout: 3s
+    #   retries: 5
+    #   start_period: 10s # Added start_period
     networks:
       - hadoop-net
 
@@ -142,8 +142,8 @@ services:
     depends_on:
       hive-metastore-db:
         condition: service_healthy
-      namenode:
-        condition: service_healthy
+      # namenode:
+      #   condition: service_healthy
     environment:
       - SERVICE_NAME=metastore
       - DB_DRIVER=postgres
