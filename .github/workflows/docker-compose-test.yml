@@ -43,6 +43,24 @@ jobs:
       #     done
       #     echo "All core services are healthy/up."
 
+      - name: Wait for NameNode to be ready
+        run: |
+          timeout=60
+          while [ $timeout -gt 0 ]; do
+            if docker exec namenode hdfs dfsadmin -report &>/dev/null; then
+              echo "NameNode is ready"
+              break
+            fi
+            echo "Waiting for NameNode to start..."
+            sleep 5
+            timeout=$((timeout-5))
+          done
+          if [ $timeout -le 0 ]; then
+            echo "NameNode failed to start within timeout"
+            docker logs namenode
+            exit 1
+          fi
+
       - name: Test HDFS functionality
         run: docker exec namenode hdfs dfs -mkdir -p /test_dir && docker exec namenode hdfs dfs -ls /
 
