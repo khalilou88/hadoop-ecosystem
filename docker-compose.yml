@@ -283,7 +283,7 @@ services:
     environment:
       - JOB_MANAGER_RPC_ADDRESS=flink-jobmanager
       - HADOOP_CLASSPATH=/opt/flink/lib/flink-shaded-hadoop-3-uber-3.3.6.jar # Ensure Flink can talk to Hadoop
-      - FLINK_PROPERTIES="jobmanager.memory.process.size: 1024m; taskmanager.memory.process.size: 1024m;"
+#      - FLINK_PROPERTIES="jobmanager.memory.process.size: 1024m; taskmanager.memory.process.size: 1024m;"
     networks:
       - hadoop-net
     depends_on:
@@ -301,7 +301,7 @@ services:
     environment:
       - JOB_MANAGER_RPC_ADDRESS=flink-jobmanager
       - HADOOP_CLASSPATH=/opt/flink/lib/flink-shaded-hadoop-3-uber-3.3.6.jar
-      - FLINK_PROPERTIES="taskmanager.numberOfTaskSlots: 1" # Limit slots for dev/testing
+#      - FLINK_PROPERTIES="taskmanager.numberOfTaskSlots: 1" # Limit slots for dev/testing
     networks:
       - hadoop-net
 
