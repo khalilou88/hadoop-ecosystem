@@ -25,6 +25,114 @@ services:
     networks:
       - hadoop-net
 
+  datanode:
+    image: apache/hadoop:3.3.6
+    hostname: datanode
+    container_name: datanode
+    depends_on:
+      namenode:
+        condition: service_healthy
+    environment:
+      - CLUSTER_NAME=test-cluster
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - HDFS_CONF_dfs_datanode_http_address=0.0.0.0:9864
+      - ENSURE_DATANODE_DIR=/tmp/hadoop-root/dfs/data
+    volumes:
+      - datanode_data:/tmp/hadoop-root/dfs/data
+    env_file:
+      - ./hadoop.env
+    healthcheck:
+      test: ["CMD", "hdfs", "dfsadmin", "-D", "datanode.web.address=datanode:9864", "-report"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s # Added start_period
+    networks:
+      - hadoop-net
+
+  resourcemanager:
+    image: apache/hadoop:3.3.6
+    hostname: resourcemanager
+    container_name: resourcemanager
+    depends_on:
+      namenode:
+        condition: service_healthy
+    ports:
+      - "8088:8088" # YARN Web UI
+    environment:
+      - CLUSTER_NAME=test-cluster
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
+      - YARN_CONF_yarn_nodemanager_aux-services=mapreduce_shuffle
+      - YARN_CONF_yarn_log-aggregation-enable=true
+      - MAPRED_CONF_mapreduce_framework_name=yarn
+    env_file:
+      - ./hadoop.env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://resourcemanager:8088/ws/v1/cluster/info"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s # Added start_period
+    networks:
+      - hadoop-net
+
+  nodemanager:
+    image: apache/hadoop:3.3.6
+    hostname: nodemanager
+    container_name: nodemanager
+    depends_on:
+      namenode:
+        condition: service_healthy
+      resourcemanager:
+        condition: service_healthy
+    environment:
+      - CLUSTER_NAME=test-cluster
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - YARN_CONF_yarn_resourcemanager_hostname=resourcemanager
+      - YARN_CONF_yarn_nodemanager_aux-services=mapreduce_shuffle
+      - YARN_CONF_yarn_log-aggregation-enable=true
+      - MAPRED_CONF_mapreduce_framework_name=yarn
+    env_file:
+      - ./hadoop.env
+    healthcheck: # Added healthcheck for nodemanager
+      test: ["CMD", "jps | grep NodeManager || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - hadoop-net
+
+  historyserver:
+    image: apache/hadoop:3.3.6
+    hostname: historyserver
+    container_name: historyserver
+    depends_on:
+      namenode:
+        condition: service_healthy
+      resourcemanager:
+        condition: service_healthy
+    ports:
+      - "8188:8188" # MapReduce JobHistory Web UI
+    environment:
+      - CLUSTER_NAME=test-cluster
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - MAPRED_CONF_mapreduce_jobhistory_address=historyserver:10020
+      - MAPRED_CONF_mapreduce_jobhistory_webapp_address=0.0.0.0:8188
+    volumes:
+      - hadoop_history:/tmp/hadoop-yarn/staging/history
+    env_file:
+      - ./hadoop.env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://historyserver:8188"] # Checking web UI
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s # Added start_period
+    networks:
+      - hadoop-net
+
 volumes:
   namenode_data:
 
