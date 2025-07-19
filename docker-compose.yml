@@ -9,7 +9,7 @@ services:
     ports:
       - "2181:2181" # Client port
     environment:
-      - ZOO_ENABLE_AUTH=no # For development, disable auth for simplicity
+      - ALLOW_ANONYMOUS_LOGIN=yes # For development, disable auth for simplicity
       - ZOO_TICK_TIME=2000
       - ZOO_INIT_LIMIT=10
       - ZOO_SYNC_LIMIT=5
