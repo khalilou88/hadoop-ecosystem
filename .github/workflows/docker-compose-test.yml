@@ -1,0 +1,66 @@
+name: Test Hadoop Ecosystem Docker Compose
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30 # Increase timeout as this is a large setup
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Start Hadoop Ecosystem
+        run: docker compose up -d
+
+      - name: Wait for core services to be healthy
+        timeout-minutes: 10 # Give enough time for services to start
+        run: |
+          services=("namenode" "zookeeper" "hive-metastore-db" "kafka" "hive-metastore" "hiveserver2" "spark-master" "flink-jobmanager" "trino-coordinator")
+          for service in "${services[@]}"; do
+            echo "Waiting for $service to be healthy..."
+            for i in $(seq 1 60); do # Check for up to 600 seconds (10 minutes)
+              status=$(docker compose ps -a $service | grep $service | awk '{print $NF}')
+              if [[ "$status" == "(healthy)" || "$status" == "Up" ]]; then
+                echo "$service is healthy/up."
+                break
+              fi
+              if [ $i -eq 60 ]; then
+                echo "Error: $service did not become healthy/up within the timeout."
+                docker compose logs $service
+                exit 1
+              fi
+              sleep 10 # Check every 10 seconds
+            done
+          done
+          echo "All core services are healthy/up."
+
+      - name: Test HDFS functionality
+        run: docker exec namenode hdfs dfs -mkdir -p /test_dir && docker exec namenode hdfs dfs -ls /
+
+      - name: Test Kafka functionality (list topics)
+        run: docker exec kafka kafka-topics.sh --bootstrap-server kafka:9092 --list
+
+      - name: Test Hive functionality (show databases via Beeline)
+        run: |
+          docker exec hiveserver2 beeline -u 'jdbc:hive2://hiveserver2:10000/' -e "show databases;"
+
+      - name: Test Spark functionality (check version)
+        run: docker exec spark-master spark-shell --version
+
+      - name: Test Flink functionality (check version)
+        run: docker exec flink-jobmanager flink --version
+
+      - name: Test Trino functionality (check version)
+        run: docker exec trino-coordinator trino --version
+
+      - name: Cleanup Docker containers and volumes
+        if: always() # Run even if previous steps fail
+        run: docker compose down -v
