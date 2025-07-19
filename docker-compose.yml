@@ -21,6 +21,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+      start_period: 10s # Added start_period
     networks:
       - hadoop-net
 
@@ -45,6 +46,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+      start_period: 10s # Added start_period
     networks:
       - hadoop-net
 
@@ -71,6 +73,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+      start_period: 10s # Added start_period
     networks:
       - hadoop-net
 
@@ -92,6 +95,12 @@ services:
       - MAPRED_CONF_mapreduce_framework_name=yarn
     env_file:
       - ./hadoop.env
+    healthcheck: # Added healthcheck for nodemanager
+      test: ["CMD", "jps | grep NodeManager || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     networks:
       - hadoop-net
 
@@ -115,12 +124,18 @@ services:
       - hadoop_history:/tmp/hadoop-yarn/staging/history
     env_file:
       - ./hadoop.env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://historyserver:8188"] # Checking web UI
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s # Added start_period
     networks:
       - hadoop-net
 
   # Zookeeper for Kafka and other distributed coordination
   zookeeper:
-    image: bitnami/zookeeper:3.9.3 # Recent stable version
+    image: bitnami/zookeeper:3.9.3
     hostname: zookeeper
     container_name: zookeeper
     ports:
@@ -164,6 +179,12 @@ services:
       - kafka_data:/tmp/kafka-logs
     networks:
       - hadoop-net
+    healthcheck: # Added healthcheck for kafka
+      test: ["CMD", "sh", "-c", "nc -z localhost 9092 || exit 1"] # Check Kafka listener port
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s # Kafka can take a bit longer to start
 
   # PostgreSQL for Hive Metastore
   hive-metastore-db:
@@ -183,6 +204,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+      start_period: 10s # Added start_period
 
   # Hive Metastore Service
   hive-metastore:
@@ -204,11 +226,12 @@ services:
       - "9083:9083" # Metastore Thrift port
     networks:
       - hadoop-net
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://hive-metastore:9083"] # This might need adjustment as metastore doesn't have a direct HTTP endpoint for health check. A better check involves connecting via beeline.
-      interval: 5s
-      timeout: 10s
+    healthcheck: # Updated healthcheck for hive-metastore
+      test: ["CMD", "jps | grep HiveMetaStore || exit 1"] # Check for HiveMetaStore process
+      interval: 10s
+      timeout: 5s
       retries: 5
+      start_period: 20s # Hive Metastore can take time to initialize DB
 
   # HiveServer2 for SQL access
   hiveserver2:
@@ -235,17 +258,18 @@ services:
       interval: 5s
       timeout: 10s
       retries: 5
+      start_period: 15s # Added start_period
 
   # Spark Master
   spark-master:
-    image: apache/spark:3.5.1 # Recent stable Spark
+    image: apache/spark:3.5.1
     hostname: spark-master
     container_name: spark-master
     environment:
       - SPARK_MASTER_HOST=spark-master
       - SPARK_MASTER_PORT=7077
       - SPARK_MASTER_WEBUI_PORT=8080
-      - HDFS_CONF_dfs_namenode_rpc_address=namenode:9000 # For Spark to interact with HDFS
+      - HDFS_CONF_dfs_namenode_rpc_address=namenode:9000
       - SPARK_DAEMON_JAVA_OPTS=-Xmx512m
     ports:
       - "8080:8080" # Spark Master Web UI
@@ -255,6 +279,12 @@ services:
         condition: service_healthy
     networks:
       - hadoop-net
+    healthcheck: # Added healthcheck for spark-master
+      test: ["CMD", "curl", "-f", "http://spark-master:8080"] # Check Spark Master Web UI
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   # Spark Worker
   spark-worker:
@@ -264,8 +294,8 @@ services:
     environment:
       - SPARK_MASTER_URL=spark://spark-master:7077
       - SPARK_WORKER_WEBUI_PORT=8081
-      - SPARK_WORKER_CORES=1 # Limit cores for dev/testing
-      - SPARK_WORKER_MEMORY=1g # Limit memory for dev/testing
+      - SPARK_WORKER_CORES=1
+      - SPARK_WORKER_MEMORY=1g
       - HDFS_CONF_dfs_namenode_rpc_address=namenode:9000
       - SPARK_DAEMON_JAVA_OPTS=-Xmx512m
     ports:
@@ -277,10 +307,16 @@ services:
         condition: service_healthy
     networks:
       - hadoop-net
+    healthcheck: # Added healthcheck for spark-worker
+      test: ["CMD", "jps | grep Worker || exit 1"] # Check for Spark Worker process
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   # Flink JobManager
   flink-jobmanager:
-    image: apache/flink:1.20-java11 # Recent stable Flink with Java 11
+    image: apache/flink:1.20-java11
     hostname: flink-jobmanager
     container_name: flink-jobmanager
     ports:
@@ -294,7 +330,13 @@ services:
       - hadoop-net
     depends_on:
       namenode:
-        condition: service_healthy # Flink will interact with HDFS
+        condition: service_healthy
+    healthcheck: # Added healthcheck for flink-jobmanager
+      test: ["CMD", "curl", "-f", "http://flink-jobmanager:8081/overview"] # Check Flink Web UI
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   # Flink TaskManager
   flink-taskmanager:
@@ -310,23 +352,35 @@ services:
 #      - FLINK_PROPERTIES="taskmanager.numberOfTaskSlots: 1" # Limit slots for dev/testing
     networks:
       - hadoop-net
+    healthcheck: # Added healthcheck for flink-taskmanager
+      test: ["CMD", "jps | grep TaskManagerRunner || exit 1"] # Check for TaskManagerRunner process
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   # Trino Coordinator
   trino-coordinator:
-    image: trinodb/trino:453 # Recent stable Trino
+    image: trinodb/trino:453
     hostname: trino-coordinator
     container_name: trino-coordinator
     ports:
       - "8080:8080" # Trino Web UI and API
     volumes:
-      - ./trino/etc:/etc/trino # Mount config for Trino
+      - ./trino/etc:/etc/trino
     networks:
       - hadoop-net
     depends_on:
       namenode:
-        condition: service_healthy # Trino can query HDFS
+        condition: service_healthy
       hive-metastore:
-        condition: service_healthy # Trino can query Hive tables
+        condition: service_healthy
+    healthcheck: # Added healthcheck for trino-coordinator
+      test: ["CMD", "curl", "-f", "http://trino-coordinator:8080/v1/status"] # Check Trino status API
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
 volumes:
   namenode_data:
