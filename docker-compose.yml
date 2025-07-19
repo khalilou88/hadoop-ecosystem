@@ -135,6 +135,12 @@ services:
 
 volumes:
   namenode_data:
+  datanode_data:
+  hadoop_history:
+  zookeeper_data:
+  kafka_data:
+  hive_db_data:
+  hive_warehouse_data:
 
 networks:
   hadoop-net:
